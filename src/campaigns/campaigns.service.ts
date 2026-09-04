@@ -8,6 +8,7 @@ import { Zernio } from '@zernio/node';
 import { PrismaService } from '../prisma/prisma.service';
 import { ZERNIO } from '../zernio/zernio.module';
 import { BudgetDto } from './budget.dto';
+import { toHttp } from '../zernio/errors';
 
 @Injectable()
 export class CampaignsService {
@@ -23,14 +24,19 @@ export class CampaignsService {
       throw new ConflictException('User has no campaign yet');
     }
 
-    const { data } = await this.zernio.adcampaigns.updateAdCampaign({
-      path: { campaignId: user.facebookCampaignId },
-      body: {
-        platform: 'facebook',
-        accountId: user.zernioAccountId,
-        budget: { amount: budgetAmount, type: 'daily' },
-      },
-    });
+        const { data } = await this.zernio.adcampaigns
+      .updateAdCampaign({
+        path: { campaignId: user.facebookCampaignId },
+        body: {
+          platform: 'facebook',
+          accountId: user.zernioAccountId,
+          budget: { amount: budgetAmount, type: 'daily' },
+        },
+        signal: AbortSignal.timeout(10_000),
+      })
+      .catch((err: unknown) => {
+        throw toHttp(err);
+      });
 
     return { campaignId: user.facebookCampaignId, ...data };
   }
