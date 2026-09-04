@@ -1,114 +1,73 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Campaign budget
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+`POST /campaigns/budget` finds a user by phone and sets the daily budget of their Meta campaign via Zernio.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
-
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```json
+{ "phoneNumber": "+972541234567", "budgetAmount": 250 }
 ```
 
-## Compile and run the project
+Returns 200 with the campaign id and what Zernio sends back.
 
-```bash
-# development
-$ npm run start
+## Run
 
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+```
+npm i
+npx prisma generate
+npm run start:dev
 ```
 
-## Run tests
+`.env`:
 
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+```
+DATABASE_URL=postgresql://localhost:5432/zernio
+ZERNIO_API_KEY=sk_...
 ```
 
-## Deployment
+Boots without a database, Prisma connects on the first query. With Postgres, `npx prisma db push` creates the table.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Test
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```
+npm test -- campaigns.service
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+The Zernio client is injected under the `ZERNIO` token, so the test replaces it with a plain object and a `jest.fn()`. The mock rejects with the SDK's own `ZernioApiError` (409, `BUDGET_LEVEL_MISMATCH`) and the test checks the request body and the resulting 409.
 
-## Observability
+Nest 12 is ESM only, so the test script runs jest with `--experimental-vm-modules`.
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+## Zernio
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+Docs used: Meta Ads overview and its Campaigns page, the update campaign reference, the error handling, rate limits and idempotency guides, the Node SDK page and the SDK source in `node_modules/@zernio/node/src`.
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+Meta keeps the budget either on the campaign (CBO) or on the ad sets (ABO). We only store a campaign id, so the call is `PUT /v1/ads/campaigns/{campaignId}` with `budget: { amount, type: 'daily' }`, which is `zernio.adcampaigns.updateAdCampaign` in the SDK. Amount is in whole currency units, same as our input. `accountId` is sent always, Zernio needs it for empty campaigns and ignores it otherwise.
 
-## Resources
+SDK notes:
 
-Check out a few resources that may come in handy when working with NestJS:
+- Errors are thrown as `ZernioApiError` with `statusCode` and `code`. The envelope's `type` and `platformError` are dropped by the SDK, so mapping is by status and code.
+- The `timeout` option of the client is not wired, so the service passes its own `AbortSignal.timeout`.
+- Types come from `@hey-api/client-fetch`, which the SDK does not ship. Added as a dev dependency, otherwise every call is `any`.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## Assumptions
 
-## Support
+- `buget` and `quniue` in the brief are typos.
+- ABO campaigns get a 409 instead of updating ad sets. The model has no ad set id.
+- `metaAdAccountId` is unused, the update call does not take it.
+- Nothing is stored, Zernio is the source of truth.
+- Only `budgetAmount >= 1` is checked locally, Meta's minimum depends on currency.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+## Failure modes
 
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+| Case | Response | Why |
+|---|---|---|
+| Invalid body | 400 | Validation pipe, nothing is called. |
+| Phone not found | 404 | |
+| User has no campaign | 409 | State problem, not a bad request. |
+| Zernio 404 | 409 | Our campaign id is stale. |
+| Zernio 409 | 409 | ABO campaign. |
+| `platform_api_error` | 422 with Meta's message | Caller can change the amount. |
+| `ads_connection_required` / `account_disconnected` | 409 | Owner has to reconnect Meta. |
+| 429 | 503 with `retryAfter` | Retry later. |
+| 400 / 401 / 403 / 500 / 501 | 502, logged | Our bug, key or billing, or their outage. |
+| Timeout (10 s) | 504 | The update may have landed. No idempotency key on this endpoint, so no blind retry. |
+| Network error | 502 | Request never reached Zernio. |
+| No `ZERNIO_API_KEY` | App does not start | |

@@ -24,7 +24,7 @@ export class CampaignsService {
       throw new ConflictException('User has no campaign yet');
     }
 
-        const { data } = await this.zernio.adcampaigns
+    const { data } = await this.zernio.adcampaigns
       .updateAdCampaign({
         path: { campaignId: user.facebookCampaignId },
         body: {

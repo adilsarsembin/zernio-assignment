@@ -29,7 +29,9 @@ export function toHttp(err: unknown): HttpException {
       err.code === 'ads_connection_required' ||
       err.code === 'account_disconnected'
     ) {
-      return new ConflictException('Meta account disconnected, reconnect required');
+      return new ConflictException(
+        'Meta account disconnected, reconnect required',
+      );
     }
     if (err.statusCode === 404) {
       return new ConflictException('Campaign not found on Zernio');
